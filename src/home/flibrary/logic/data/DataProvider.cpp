@@ -197,7 +197,8 @@ private:
 
 					  if (navigationMode == NavigationMode::Authors && !navigationId.isEmpty())
 					  {
-						  const auto query = db->CreateQuery(QString("select " FLIBRARY_SQL_FULL_AUTHOR_NAME " from Authors a where a.AuthorID = %1").arg(navigationId).toStdString());
+						  const auto query = db->CreateQuery("select " FLIBRARY_SQL_FULL_AUTHOR_NAME " from Authors a where a.AuthorID = ?");
+						  query->Bind(0, navigationId.toLongLong());
 						  query->Execute();
 						  assert(!query->Eof());
 						  authorName = query->Get<const char*>(0);
