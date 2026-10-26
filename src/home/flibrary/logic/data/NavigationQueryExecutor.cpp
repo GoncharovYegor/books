@@ -45,9 +45,9 @@ constexpr auto SEARCH_WITH = R"(
 with Ids(BookID) as (
 	with Search (Title) as (
 		select Title
-		from Searches_User where SearchID = %1
+		from Searches_User where SearchID = :search_id
 	)
-	%2
+	%1
 )
 )";
 
@@ -88,14 +88,11 @@ constexpr auto SEARCH_WITH_ANNOTATION = R"(
          join Search s on Annotations_Search match s.Title
 )";
 
-QString ToSqlStringLiteral(QString value)
-{
-	return QString("'%1'").arg(value.replace('\'', "''"));
-}
-
-QString GetSearchWith(DB::IDatabase& db, const ISettings& settings, const QString& id)
+// The file name match binds the origin's base name and extension: a file name may well contain an apostrophe
+BoundSql GetSearchWith(DB::IDatabase& db, const ISettings& settings, const QString& id)
 {
 	QStringList result;
+	BoundSql    fileNameMatch;
 #define ITEM(NAME, DEFAULT) if (settings.Get(Constant::Settings::NAME, DEFAULT)) result << NAME
 	ITEM(SEARCH_WITH_TITLE, true);
 	ITEM(SEARCH_WITH_AUTHOR, true);
@@ -105,14 +102,20 @@ QString GetSearchWith(DB::IDatabase& db, const ISettings& settings, const QStrin
 
 	if (settings.Get(Constant::Settings::SEARCH_WITH_FILENAME, false))
 	{
-		if (const auto query = db.CreateQuery(std::format("select Origin from Searches_User where SearchID = {}", id)); query->Execute(), !query->Eof())
+		const auto query = db.CreateQuery("select Origin from Searches_User where SearchID = ?");
+		query->Bind(0, id.toLongLong());
+		if (query->Execute(), !query->Eof())
 		{
 			if (!query->IsNull(0))
 			{
 				const QFileInfo fileInfo(query->Get<const char*>(0));
-				auto            searchWithFileNameQueryText = QString("\n\tselect BookID\n\t\tfrom Books\n\t\twhere FileName = %1").arg(ToSqlStringLiteral(fileInfo.completeBaseName()));
+				QString         searchWithFileNameQueryText("\n\tselect BookID\n\t\tfrom Books\n\t\twhere FileName = :search_file_name");
+				fileNameMatch.AddValue(":search_file_name", BoundSql::TextValue(fileInfo.completeBaseName()));
 				if (const auto suffix = fileInfo.suffix(); !suffix.isEmpty())
-					searchWithFileNameQueryText.append(QString(" and lower(Ext) = %1").arg(ToSqlStringLiteral("." + suffix.toLower())));
+				{
+					searchWithFileNameQueryText.append(" and lower(Ext) = :search_file_ext");
+					fileNameMatch.AddValue(":search_file_ext", BoundSql::TextValue("." + suffix.toLower()));
+				}
 				result << std::move(searchWithFileNameQueryText);
 			}
 		}
@@ -121,40 +124,55 @@ QString GetSearchWith(DB::IDatabase& db, const ISettings& settings, const QStrin
 	if (result.isEmpty())
 		result << "select -1";
 
-	return QString(SEARCH_WITH).arg(id, result.join("union"));
+	BoundSql with(QString(SEARCH_WITH).arg(result.join("union")), ":search_id", BoundSql::IntegerValue(id));
+	with.Append(fileNameMatch);
+	return with;
 }
 
-QString GetFavoritesWith(DB::IDatabase&, const ISettings&, const QString& id)
+// The id is "<navigation mode>/<object id>"; the object id is bound, as an integer or as text depending on the mode
+BoundSql GetFavoritesWith(DB::IDatabase&, const ISettings&, const QString& id)
 {
 	const auto list = id.split('/');
 	if (list.size() < 2)
-		return QString(COMMON_WITH).arg("select -1");
+		return BoundSql { QString(COMMON_WITH).arg("select -1") };
 
-	static constexpr const char* withs[] {
-		"select BookID from Author_List where AuthorID=%1",
-		"select BookID from Series_List where SeriesID=%1",
-		"select BookID from Genre_List where GenreCode='%1'",
-		"select BookID from Books where Year=%1",
-		"select BookID from Keyword_List where KeywordID=%1",
-		nullptr,
-		nullptr,
-		"select BookID from Books where Lang='%1'",
-		nullptr,
-		nullptr,
-		nullptr,
-		nullptr,
-		nullptr,
-		nullptr,
-		nullptr,
+	struct FavoriteWith
+	{
+		const char*         text;
+		QueryClause::IdType idType;
+	};
+
+	static constexpr FavoriteWith withs[] {
+		{   "select BookID from Author_List where AuthorID = :favorite_id", QueryClause::IdType::Integer },
+		{   "select BookID from Series_List where SeriesID = :favorite_id", QueryClause::IdType::Integer },
+		{   "select BookID from Genre_List where GenreCode = :favorite_id",    QueryClause::IdType::Text },
+		{			 "select BookID from Books where Year = :favorite_id", QueryClause::IdType::Integer },
+		{ "select BookID from Keyword_List where KeywordID = :favorite_id", QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{			 "select BookID from Books where Lang = :favorite_id",    QueryClause::IdType::Text },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
+		{														  nullptr, QueryClause::IdType::Integer },
 	};
 	static_assert(std::size(withs) == static_cast<size_t>(NavigationMode::Last));
 
 	bool       ok    = false;
 	const auto index = list.front().toULongLong(&ok);
-	assert(ok && index < std::size(withs));
-	auto* with = withs[index];
+	assert(ok && index < std::size(withs) && withs[index].text);
+	if (!ok || index >= std::size(withs) || !withs[index].text)
+		return BoundSql { QString(COMMON_WITH).arg("select -1") };
 
-	return QString(COMMON_WITH).arg(QString(with).arg(list.back()));
+	const auto& [text, idType] = withs[index];
+	return BoundSql {
+		QString(COMMON_WITH).arg(text),
+		":favorite_id",
+		idType == QueryClause::IdType::Text ? BoundSql::TextValue(list.back()) : BoundSql::IntegerValue(list.back()),
+	};
 }
 
 using Cache = std::unordered_map<NavigationMode, IDataItem::Ptr>;
@@ -585,9 +603,9 @@ constexpr std::pair<NavigationMode, std::pair<NavigationRequest, QueryDescriptio
 	 { "select AuthorID, FirstName, LastName, MiddleName, IsDeleted, Flags from Authors",
 	 &CreateAuthorItem,
 	 { .booksFrom       = "from Author_List al join Books_View b on b.BookID = al.BookID",
-	 .booksWhere      = "where al.AuthorID = %1",
+	 .booksWhere      = "where al.AuthorID = :navigationId",
 	 .navigationFrom  = "from Author_List b",
-	 .navigationWhere = "where b.AuthorID = %1" },
+	 .navigationWhere = "where b.AuthorID = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateAuthorsTree,
 	 BookItem::Mapping(MAPPING_AUTHORS),
@@ -598,9 +616,9 @@ constexpr std::pair<NavigationMode, std::pair<NavigationRequest, QueryDescriptio
 	 { "select SeriesID, SeriesTitle, IsDeleted, Flags from Series",
 	 &DatabaseUtil::CreateSimpleListItem,
 	 { .booksFrom       = "from Series_List sl join Books_View b on b.BookID = sl.BookID",
-	 .booksWhere      = "where sl.SeriesID = %1",
+	 .booksWhere      = "where sl.SeriesID = :navigationId",
 	 .navigationFrom  = "from Series_List b",
-	 .navigationWhere = "where b.SeriesID = %1" },
+	 .navigationWhere = "where b.SeriesID = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateSeriesTree,
 	 BookItem::Mapping(MAPPING_SERIES),
@@ -610,10 +628,11 @@ constexpr std::pair<NavigationMode, std::pair<NavigationRequest, QueryDescriptio
 	 { &RequestNavigationGenres,
 	 { "select g.GenreCode, g.GenreAlias, g.FB2Code, g.ParentCode, (select count(42) from Genre_List gl where gl.GenreCode = g.GenreCode) BookCount, IsDeleted, Flags from Genres g",
 	 &DatabaseUtil::CreateGenreItem,
-	 { .booksFrom       = "from Genre_List gl join Books_View b on b.BookID = gl.BookID",
-	 .booksWhere      = "where gl.GenreCode = '%1'",
-	 .navigationFrom  = "from Genre_List b",
-	 .navigationWhere = "where b.GenreCode = '%1'" },
+	 { .booksFrom        = "from Genre_List gl join Books_View b on b.BookID = gl.BookID",
+	 .booksWhere       = "where gl.GenreCode = :navigationId",
+	 .navigationFrom   = "from Genre_List b",
+	 .navigationWhere  = "where b.GenreCode = :navigationId",
+	 .navigationIdType = QueryClause::IdType::Text },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_GENRES),
@@ -626,7 +645,7 @@ with PublishYears(Year) as (select distinct Year from Books)
 select y.Year, y.Year, not exists (select 42 from Books_View b where b.Year = y.Year and b.IsDeleted = 0 ) IsDeleted, 0 Flags 
 from PublishYears y)",
 	 &DatabaseUtil::CreateSimpleListItem,
-	 { .booksFrom = "from Books_View b", .booksWhere = "where b.Year = %1", .navigationFrom = "from Books_View b", .navigationWhere = "where b.Year = %1" },
+	 { .booksFrom = "from Books_View b", .booksWhere = "where b.Year = :navigationId", .navigationFrom = "from Books_View b", .navigationWhere = "where b.Year = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_FULL),
@@ -637,9 +656,9 @@ from PublishYears y)",
 	 { "select KeywordID, KeywordTitle, IsDeleted, Flags from Keywords",
 	 &DatabaseUtil::CreateSimpleListItem,
 	 { .booksFrom       = "from Keyword_List kl join Books_View b on b.BookID = kl.BookID",
-	 .booksWhere      = "where kl.KeywordID = %1",
+	 .booksWhere      = "where kl.KeywordID = :navigationId",
 	 .navigationFrom  = "from Keyword_List b",
-	 .navigationWhere = "where b.KeywordID = %1" },
+	 .navigationWhere = "where b.KeywordID = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_FULL),
@@ -650,9 +669,9 @@ from PublishYears y)",
 	 { "select GroupID, Title, IsDeleted, 0 Flags from Groups_User",
 	 &DatabaseUtil::CreateSimpleListItem,
 	 { .booksFrom       = "from Groups_List_User_View glu join Books_View b on b.BookID = glu.BookID",
-	 .booksWhere      = "where glu.GroupID = %1",
+	 .booksWhere      = "where glu.GroupID = :navigationId",
 	 .navigationFrom  = "from Groups_List_User_View b",
-	 .navigationWhere = "where b.GroupID = %1" },
+	 .navigationWhere = "where b.GroupID = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_FULL),
@@ -687,7 +706,7 @@ order by f.FavoriteID
 	 { &RequestNavigationUpdates,
 	 { "select UpdateID, UpdateTitle, IsDeleted, 0 Flags, ParentId from Updates order by ParentId",
 	 &DatabaseUtil::CreateSimpleListItem,
-	 { .booksFrom = "from Books_View b", .booksWhere = "where b.UpdateID = %1", .navigationFrom = "from Books_View b", .navigationWhere = "where b.UpdateID = %1" },
+	 { .booksFrom = "from Books_View b", .booksWhere = "where b.UpdateID = :navigationId", .navigationFrom = "from Books_View b", .navigationWhere = "where b.UpdateID = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_FULL),
@@ -697,7 +716,7 @@ order by f.FavoriteID
 	 { &RequestNavigationSimpleList,
 	 { "select FolderID, FolderTitle, IsDeleted, 0 Flags from Folders where exists (select 42 from Books where Books.FolderID = Folders.FolderID)",
 	 &DatabaseUtil::CreateSimpleListItem,
-	 { .booksFrom = "from Books_View b", .booksWhere = "where b.FolderID = %1", .navigationFrom = "from Books_View b", .navigationWhere = "where b.FolderID = %1" },
+	 { .booksFrom = "from Books_View b", .booksWhere = "where b.FolderID = :navigationId", .navigationFrom = "from Books_View b", .navigationWhere = "where b.FolderID = :navigationId" },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_FULL),
@@ -707,7 +726,7 @@ order by f.FavoriteID
 	 { &RequestNavigationSimpleList,
 	 { "select l.LanguageCode, not exists (select 42 from Books_View b where b.Lang = l.LanguageCode and b.IsDeleted = 0 ) IsDeleted, Flags from Languages l",
 	 &DatabaseUtil::CreateLanguageItem,
-	 { .booksFrom = "from Books_View b", .booksWhere = "where b.Lang = '%1'", .navigationFrom = "from Books_View b", .navigationWhere = "where b.Lang = '%1'" },
+	 { .booksFrom = "from Books_View b", .booksWhere = "where b.Lang = :navigationId", .navigationFrom = "from Books_View b", .navigationWhere = "where b.Lang = :navigationId", .navigationIdType = QueryClause::IdType::Text },
 	 &IBooksListCreator::CreateGeneralList,
 	 &IBooksTreeCreator::CreateGeneralTree,
 	 BookItem::Mapping(MAPPING_FULL),
