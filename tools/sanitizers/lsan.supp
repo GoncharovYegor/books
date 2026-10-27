@@ -1,0 +1,2 @@
+# LeakSanitizer suppressions for tools/run_sanitizers.sh: leaks inside third-party libraries we do not build.
+# One "leak:<library or function>" per line, each with the reason.
