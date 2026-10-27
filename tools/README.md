@@ -8,6 +8,28 @@ Run from the repository root.
 | `find_contextless_timers.py` | Lists `QTimer::singleShot` lambdas without a context object, which can run after their object is destroyed. | `python3 tools/find_contextless_timers.py src` |
 | `scan_style.py` | Naming and formatting metrics: long lines, BOMs, file and folder name case, `m_` members, misspellings. | `python3 tools/scan_style.py src/home` |
 | `scan_design.py` | Design metrics: injected dependencies per constructor, single-implementation interfaces, embedded SQL, shared-library count. | `python3 tools/scan_design.py .` |
+| `run_sanitizers.sh` | Runs the HTTP, start-up and GUI suites on a sanitizer build and collects the AddressSanitizer, UBSan and ThreadSanitizer reports. Suppressions for third-party code are in `sanitizers/`. | `tools/run_sanitizers.sh build-asan` |
+
+## Sanitizer builds
+
+Each sanitizer gets its own Debug build folder, next to `build-debug`. The Conan dependencies are the Debug ones, so a
+configure reuses them. Only our code is instrumented; Qt and the Conan libraries are not, which is why ThreadSanitizer
+needs the suppressions in `sanitizers/tsan.supp`. Build with few jobs: a sanitized compile needs about twice the memory.
+
+```
+cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFLIBRARY_SANITIZE=address,undefined -DQt6_DIR=... -D7zip_BIN_DIR=... -DNPM_EXECUTABLE=$(which npm)
+cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFLIBRARY_SANITIZE=thread -DQt6_DIR=... -D7zip_BIN_DIR=... -DNPM_EXECUTABLE=$(which npm)
+cmake --build build-asan -j3
+tools/run_sanitizers.sh build-asan
+```
+
+The sanitizer builds keep compiler warnings as warnings: GCC reports false `maybe-uninitialized` and `stringop` warnings
+in libstdc++ code once it is instrumented. In a UBSan build `logic` links Qt Widgets too: the `vptr` check needs the type
+information of the dialogs it calls, and `opds` would not link otherwise.
+
+GCC 14's ThreadSanitizer stops with "unexpected memory mapping" under the address randomisation of 6.x kernels.
+`run_sanitizers.sh` runs everything under `setarch -R`; to start a TSan program by hand, do the same:
+`setarch $(uname -m) -R build-tsan/bin/opds ...`.
 
 ## Reproducers (`repro/`)
 
