@@ -8,6 +8,7 @@ Run from the repository root.
 | `find_contextless_timers.py` | Lists `QTimer::singleShot` lambdas without a context object, which can run after their object is destroyed. | `python3 tools/find_contextless_timers.py src` |
 | `scan_style.py` | Naming and formatting metrics: long lines, BOMs, file and folder name case, `m_` members, misspellings. | `python3 tools/scan_style.py src/home` |
 | `scan_design.py` | Design metrics: injected dependencies per constructor, single-implementation interfaces, embedded SQL, shared-library count. | `python3 tools/scan_design.py .` |
+| `check_package.py` | Fails if a program or library in the Linux package needs a shared library that the package does not ship and that is not part of every desktop Linux (#1415). Prints the newest glibc version the package needs. | `python3 tools/check_package.py <FLibrary-...tar.xz>` |
 | `run_sanitizers.sh` | Runs the HTTP, start-up and GUI suites on a sanitizer build and collects the AddressSanitizer, UBSan and ThreadSanitizer reports. Suppressions for third-party code are in `sanitizers/`. | `tools/run_sanitizers.sh build-asan` |
 
 ## Sanitizer builds

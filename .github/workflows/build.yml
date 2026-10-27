@@ -247,6 +247,7 @@ jobs:
           test -n "${binary}"
           test -f "$(dirname "${binary}")/lib/compat/libstdc++.so.6"
           test -f "$(dirname "${binary}")/lib/compat/libgcc_s.so.1"
+          python3 tools/check_package.py "${smoke_dir}"
           xvfb-run -a timeout 30 "$(dirname "${binary}")/start.sh" --version
           dpkg-deb --info "${package}" >/dev/null
           (cd "${artifact_dir}" && sha256sum FLibrary-* > SHA256SUMS)
