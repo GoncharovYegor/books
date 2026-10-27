@@ -197,14 +197,15 @@ except zipfile.BadZipFile:
 EOF
 )" "$work/book.zip is not a zip archive with the book"
 
-curl -s --max-time 20 -o "$work/book.fb2" "$base/Images/fb2/$detective_id"
-report "without an export encoding, a book downloads unchanged" "$(python3 -I - "$work/archives" "$work/book.fb2" <<'EOF'
-import sys, zipfile
-from pathlib import Path
-archive = next(Path(sys.argv[1]).glob("fb2-000001-*.zip"))
-print("ok" if zipfile.ZipFile(archive).read("3.fb2") == Path(sys.argv[2]).read_bytes() else "")
+cp1251_id=$(book_id "Second Test Book")
+curl -s --max-time 20 -o "$work/book-utf8.fb2" "$base/Images/fb2/$cp1251_id"
+report "without an export encoding, a book downloads in UTF-8" "$(python3 -I - "$work/book-utf8.fb2" <<'EOF'
+import sys
+data = open(sys.argv[1], "rb").read()
+# The fixture stores this book in windows-1251; its body text has the Cyrillic word "Test"
+print("ok" if b'encoding="utf-8"' in data.split(b"\n")[0].lower() and "Тест".encode() in data else "")
 EOF
-)" "the download differs from 3.fb2 in the archive"
+)" "got: $(head -c 100 "$work/book-utf8.fb2")"
 
 opensearch=$(curl -s --max-time 20 "$base/opds/opensearch")
 report "OpenSearch link uses the address the client called" \
