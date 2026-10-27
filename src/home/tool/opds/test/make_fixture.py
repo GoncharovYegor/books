@@ -1,7 +1,7 @@
 """Writes a tiny book archive and its INPX index for the OPDS server and GUI tests.
 
 Usage: python3 make_fixture.py <archive folder> [--update]
-  --update  adds a second archive with one more book, as a daily update does, and indexes both archives
+  --update  adds one more archive with one more book, as a daily update does, and indexes every archive
 """
 
 import base64
@@ -39,7 +39,10 @@ EPUB_PUBLISHER = "Test Publisher"
 # Non-ASCII body text (Cyrillic "Test"), so an export in another encoding has bytes to convert
 BODY_TEXT = "Text of {title}. Тест."
 
-FB2_TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
+# The second book is stored in windows-1251, as many older fb2 files are, so a download in UTF-8 has bytes to convert
+CP1251_BOOK = "2.fb2"
+
+FB2_TEMPLATE = """<?xml version="1.0" encoding="{encoding}"?>
 <FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
 <description>
 <title-info>
@@ -116,8 +119,10 @@ def fb2(file: str, author: str, title: str, genre: str, series: str | None, numb
     last, first, middle = author.split(",")
     last = last.split(" [")[0]
     annotated = file == ANNOTATED_BOOK
+    encoding = "windows-1251" if file == CP1251_BOOK else "utf-8"
     cover = base64.b64encode(png(8, 12, (200, 40, 40))).decode()
     return FB2_TEMPLATE.format(
+        encoding=encoding,
         genre=genre,
         first=first,
         middle=middle,
@@ -131,7 +136,7 @@ def fb2(file: str, author: str, title: str, genre: str, series: str | None, numb
         coverpage='<coverpage><image l:href="#cover.png"/></coverpage>' if annotated else "",
         publish_info=f"<publish-info><publisher>{PUBLISHER}</publisher><city>Test City</city><year>2020</year><isbn>978-0-00-000000-1</isbn></publish-info>" if annotated else "",
         binary=f'<binary id="cover.png" content-type="image/png">{cover}</binary>' if annotated else "",
-    ).encode()
+    ).encode(encoding)
 
 
 def epub(author: str, title: str, lang: str) -> bytes:
