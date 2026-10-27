@@ -106,8 +106,17 @@ else()
 		-Wno-deprecated-declarations
 		-Wno-missing-field-initializers
 		-Wno-array-bounds
-		-fPIC		
+		-fPIC
 	)
+
+	# Development builds with sanitizers, in their own build folder (see tools/README.md):
+	# -DFLIBRARY_SANITIZE=address,undefined or -DFLIBRARY_SANITIZE=thread. The Conan dependencies stay uninstrumented.
+	# The instrumentation makes GCC report false maybe-uninitialized and stringop warnings in libstdc++, so warnings stay warnings
+	set(FLIBRARY_SANITIZE "" CACHE STRING "Sanitizers to build with, e.g. address,undefined or thread")
+	if(FLIBRARY_SANITIZE)
+		add_compile_options(-fsanitize=${FLIBRARY_SANITIZE} -fno-omit-frame-pointer -O1 -Wno-error)
+		add_link_options(-fsanitize=${FLIBRARY_SANITIZE})
+	endif()
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -173,11 +182,14 @@ if(APPLE)
 endif()
 add_subdirectory(${EXT_ROOT}/zip/7z/bit7z)
 add_subdirectory(${EXT_ROOT}/libmobi)
+get_target_property(BIT7Z_LIBRARY_TARGET bit7z ALIASED_TARGET)
+if(NOT BIT7Z_LIBRARY_TARGET)
+	set(BIT7Z_LIBRARY_TARGET bit7z)
+endif()
+# bit7z writes its library into its own source folder, where two build folders of one build type (build-debug and a
+# sanitizer build) would overwrite each other's copy
+set_target_properties(${BIT7Z_LIBRARY_TARGET} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bit7z")
 if(MSVC)
-	get_target_property(BIT7Z_LIBRARY_TARGET bit7z ALIASED_TARGET)
-	if(NOT BIT7Z_LIBRARY_TARGET)
-		set(BIT7Z_LIBRARY_TARGET bit7z)
-	endif()
 	set_property(TARGET ${BIT7Z_LIBRARY_TARGET} PROPERTY FOLDER ThirdParty)
 	set_property(TARGET mobi PROPERTY FOLDER ThirdParty)
 	set_target_properties(mobi PROPERTIES COMPILE_OPTIONS /W0)
@@ -249,6 +261,12 @@ enable_testing()
 
 include("src/ext/sqlite.cmake")
 include("src/home/home.cmake")
+
+# UBSan's vptr check needs the type information of each polymorphic class whose methods a library calls. logic calls
+# dialogs the GUI creates, so in such a build it links Qt Widgets itself, or opds, which has no GUI, fails to link
+if(FLIBRARY_SANITIZE MATCHES "undefined")
+	target_link_libraries(logic PRIVATE Qt${QT_MAJOR_VERSION}::Widgets)
+endif()
 
 if ("${QT_MAJOR_VERSION}" STREQUAL "6")
 	if("${NPM_EXECUTABLE}" STREQUAL "" OR NOT EXISTS ${NPM_EXECUTABLE})

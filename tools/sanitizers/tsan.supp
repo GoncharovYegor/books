@@ -1,0 +1,19 @@
+# ThreadSanitizer suppressions for tools/run_sanitizers.sh.
+# Qt and the Conan libraries are not built with -fsanitize=thread, so TSan cannot see their synchronisation
+# (QMutex and QSemaphore use futexes directly) and reports races between threads that Qt does order.
+# One "race:<library or function>" per line, each with the reason.
+
+# Qt's mutexes, wait conditions and posted-event queue use futexes, which TSan does not see in an uninstrumented Qt:
+# data handed between threads through them (queued signals, QFuture results) looks unsynchronised
+race:libQt6Core.so.6
+race:libQt6DBus.so.6
+# Implicitly shared Qt values (QSslConfiguration) passed between our worker and Qt's network thread: atomic reference counts
+race:libQt6Network.so.6
+
+# D-Bus and GLib (Qt's event dispatcher, the GTK theme) lock with their own primitives
+race:libdbus-1.so.3
+deadlock:libdbus-1.so.3
+race:libglib-2.0.so.0
+
+# glibc's tzset() takes an internal lock that is not a pthread mutex
+race:tzset_internal

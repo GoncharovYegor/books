@@ -1,0 +1,2 @@
+# UndefinedBehaviorSanitizer suppressions for tools/run_sanitizers.sh.
+# One "<check>:<file or function>" per line, each with the reason.
