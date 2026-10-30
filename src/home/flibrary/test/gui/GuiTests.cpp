@@ -545,7 +545,7 @@ private slots:
 
 		// The menu arrives on the main thread later; shared, so a late callback after a failed wait has somewhere to write
 		const auto menu = std::make_shared<IDataItem::Ptr>();
-		controller->RequestContextMenu(group, ITreeViewController::RequestContextMenuOptions::HasSelection, [menu](const QString&, const IDataItem::Ptr& item) {
+		controller->RequestContextMenu(group, ITreeViewController::RequestContextMenuOptions::HasSelection, [menu](const QString&, const IDataItem::Ptr& item, const std::set<QString>&) {
 			*menu = item;
 		});
 		QTRY_VERIFY_WITH_TIMEOUT(*menu, WAIT_MS);
@@ -1238,7 +1238,7 @@ private:
 	{
 		const auto controller = m_container->resolve<ILogicFactory>()->GetTreeViewController(ItemType::Books);
 		const auto menu       = std::make_shared<IDataItem::Ptr>();
-		controller->RequestContextMenu(book, ITreeViewController::RequestContextMenuOptions::HasSelection, [menu](const QString&, const IDataItem::Ptr& item) {
+		controller->RequestContextMenu(book, ITreeViewController::RequestContextMenuOptions::HasSelection, [menu](const QString&, const IDataItem::Ptr& item, const std::set<QString>&) {
 			*menu = item;
 		});
 		QTRY_VERIFY_WITH_TIMEOUT(*menu, WAIT_MS);
