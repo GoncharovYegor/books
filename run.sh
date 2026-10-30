@@ -56,8 +56,15 @@ for name in GSETTINGS_SCHEMA_DIR GTK_PATH GTK_EXE_PREFIX GIO_MODULE_DIR GDK_PIXB
 	esac
 done
 
-# The build's own libraries (Qt modules copied by the build, ICU, DjVuLibre, 7z.so) and ICU's data file
+# The build's own libraries (ICU, DjVuLibre, 7z.so) and ICU's data file
 export LD_LIBRARY_PATH="$build/lib:$build/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# The Qt plugins copied into the build keep Qt's RUNPATH ($ORIGIN/../../lib, which is build/lib here), so the Qt libraries
+# only they use, such as libQt6WaylandClient for the wayland platform plugin, are not found: Qt then reports "Could not
+# find the Qt platform plugin wayland" and falls back to X11. Add the Qt installation the build was configured with
+qt_dir=$(sed -n 's/^Qt6_DIR:[A-Z]*=//p' "$build/CMakeCache.txt" 2>/dev/null || true)
+if [ -n "$qt_dir" ] && [ -d "$qt_dir/../.." ]; then
+	LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$(cd "$qt_dir/../.." && pwd)"
+fi
 export ICU_DATA="$build/lib"
 
 cd "$build/bin"
