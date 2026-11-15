@@ -18,8 +18,8 @@ configure reuses them. Only our code is instrumented; Qt and the Conan libraries
 needs the suppressions in `sanitizers/tsan.supp`. Build with few jobs: a sanitized compile needs about twice the memory.
 
 ```
-cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFLIBRARY_SANITIZE=address,undefined -DQt6_DIR=... -D7zip_BIN_DIR=... -DNPM_EXECUTABLE=$(which npm)
-cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFLIBRARY_SANITIZE=thread -DQt6_DIR=... -D7zip_BIN_DIR=... -DNPM_EXECUTABLE=$(which npm)
+cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFLIBRARY_SANITIZE=address,undefined -DQt6_DIR=... -DNPM_EXECUTABLE=$(which npm)
+cmake -S . -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFLIBRARY_SANITIZE=thread -DQt6_DIR=... -DNPM_EXECUTABLE=$(which npm)
 cmake --build build-asan -j3
 tools/run_sanitizers.sh build-asan
 ```
