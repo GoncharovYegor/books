@@ -24,12 +24,13 @@ not apply here.
 
 ## Build
 
-- GCC 14 or newer (`CC=gcc-14 CXX=g++-14`), Conan 2, Qt 6.10+ (with HttpServer, WebSockets, ImageFormats), the 7-Zip
-  shared library. Release in `build/`, Debug in `build-debug/` (VS Code tasks "FLibrary: configure/build" and "(debug)").
-  Configure (adjust the Qt and 7-Zip paths to your installation):
-  `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQt6_DIR=<qt-prefix>/lib/cmake/Qt6 -D7zip_BIN_DIR=<dir with 7z.so> -DNPM_EXECUTABLE=$(which npm) -DCPACK_GENERATOR=TXZ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
+- GCC 14 or newer (`CC=gcc-14 CXX=g++-14`), Conan 2, Qt 6.10+ (with HttpServer, WebSockets, ImageFormats). Release in `build/`, Debug in `build-debug/` (VS Code tasks "FLibrary: configure/build" and "(debug)").
+  Configure (adjust the Qt path to your installation):
+  `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQt6_DIR=<qt-prefix>/lib/cmake/Qt6 -DNPM_EXECUTABLE=$(which npm) -DCPACK_GENERATOR=TXZ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
 - The first configure builds all Conan dependencies from source and is memory-hungry: lower `--parallel` (and Conan's
   `tools.build:jobs`) if the machine runs short of RAM.
+- The build compiles `7z.so` from the 7-Zip submodule into the build's `lib/` (foundation `zip/zip.cmake`), with `make`
+  and one job per CPU whatever `--parallel` says; it needs an assembler that knows the SHA-512 instructions, or gcc-12.
 - Debug builds keep symbols; everything else is stripped (`CMakeLists.txt`).
 - `.clang-format` needs clang-format 21 or newer (older versions reject the file; `pipx install clang-format` gives a
   current one). About 100 files already drift from the style on `develop`; do not mass-reformat. Format only changed
