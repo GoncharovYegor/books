@@ -1353,7 +1353,7 @@ private:
 	}
 
 	// Runs a backup or a restore of the active collection's user data and waits for its result
-	static bool RunUserDataController(void (IUserDataController::*action)(QString, IUserDataController::Callback) const, const QString& path)
+	static bool RunUserDataController(void (IUserDataController::*action)(const QString&, IUserDataController::Callback) const, const QString& path)
 	{
 		std::shared_ptr<Hypodermic::Container> container;
 		BuildContainer(container);
