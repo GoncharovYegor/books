@@ -478,6 +478,29 @@ private slots:
 		ExpectBooks(navigation, FindText(*navigation.tree->model(), LANGUAGE_GERMAN), { BROWN_BOOK }, { PETROV_BOOK, OTHER_AUTHOR_BOOK });
 	}
 
+	// A favorite's books are found by its bound id: an integer for an author, a text code for a genre
+	void selectingAFavoriteListsItsBooks()
+	{
+		ActivateCollection(BOOKS_COLLECTION);
+		ExecuteSql("delete from Favorites where FavoriteID <> ?", "-1"); // all of them
+		ExecuteSql("insert into Favorites(FavoriteID, ObjectID) select 0, AuthorID from Authors where LastName = ?", "Petrov");
+		ExecuteSql("insert into Favorites(FavoriteID, ObjectCode) select 2, GenreCode from Genres where FB2Code = ?", "det_classic");
+		if (QTest::currentTestFailed())
+			return;
+		Start();
+
+		const auto navigation = FindPanel("Navigation");
+		ShowMode(navigation, "Favorites", GENRE_CLASSICAL_DETECTIVES);
+		if (!QTest::currentTestFailed())
+		{
+			ExpectBooks(navigation, FindText(*navigation.tree->model(), GENRE_CLASSICAL_DETECTIVES), { OTHER_AUTHOR_BOOK }, { PETROV_BOOK, BROWN_BOOK });
+			ExpectBooks(navigation, FindText(*navigation.tree->model(), AUTHOR_PETROV), { PETROV_BOOK, PETROV_BOOK_2 }, { OTHER_AUTHOR_BOOK, BROWN_BOOK });
+		}
+
+		Stop();
+		ExecuteSql("delete from Favorites where FavoriteID <> ?", "-1"); // all of them
+	}
+
 	// Search by file name compares against the search's origin file name; an apostrophe in it must not break the query
 	void searchByFileNameFindsAFileWithAnApostrophe()
 	{
